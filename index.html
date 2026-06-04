@@ -39,23 +39,65 @@
     .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid rgba(255,255,255,0.08); }
 
     .dropzone-wrap { display: block; width: 100%; }
-    .dropzone {
-      display: block;
-      width: 100%;
-      position: relative;
-      border: 1px dashed rgba(255,255,255,0.15);
-      border-radius: 8px;
-      padding: 3.5rem 1.75rem;
-      text-align: center;
-      color: rgba(232,237,245,0.25);
-      font-size: 15px;
-      cursor: pointer;
-      transition: border-color 0.2s, color 0.2s;
-    }
-    .dropzone:hover, .dropzone.drag-over { border-color: rgba(138,180,212,0.5); color: rgba(232,237,245,0.55); }
+    
+  .dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 140px;
+  position: relative;
 
-    #selectedFile { font-size: 12px; color: rgba(138,180,212,0.7); margin-top: 0.6rem; min-height: 18px; }
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 10px;
 
+  background: rgba(255,255,255,0.01);
+
+  text-align: center;
+  cursor: pointer;
+
+  transition: all .25s ease;
+}
+
+.dropzone:hover {
+  border-color: rgba(138,180,212,0.5);
+  background: rgba(138,180,212,0.03);
+}
+
+.dropzone.drag-over {
+  border-color: #8ab4d4;
+  background: rgba(138,180,212,0.08);
+}
+
+.dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.dropzone-icon {
+  width: 42px;
+  height: 42px;
+  opacity: .9;
+}
+
+.dropzone-title {
+  color: rgba(232,237,245,.7);
+  font-size: 15px;
+}
+
+.dropzone-subtitle {
+  color: rgba(232,237,245,.35);
+  font-size: 12px;
+}
+
+#selectedFile {
+  text-align: center;
+  margin-top: 12px;
+  color: #8ab4d4;
+  font-size: 13px;
+}
     #uploadBtn {
       display: block;
       width: 100%;
@@ -121,10 +163,107 @@
     </div>
   </section>
 
-  <section class="upload">
-    <div class="upload-inner">
-      <h3>upload your lecture</h3>
-      <p>drop an mp3, wav, or other audio file</p>
+ <section class="upload">
+  <div class="upload-inner">
+
+    <h3>upload your lecture</h3>
+
+    <p>
+      drop an mp3, wav, mp4 or lecture recording
+    </p>
+
+    <label for="audioFile"
+           class="dropzone"
+           id="dropzone">
+
+      <div class="dropzone-content">
+
+        <svg class="dropzone-icon"
+             viewBox="0 0 24 24"
+             fill="none">
+
+          <path
+            d="M12 15V7"
+            stroke="#8ab4d4"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+
+          <path
+            d="M8.5 10.5L12 7L15.5 10.5"
+            stroke="#8ab4d4"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+
+          <rect
+            x="3"
+            y="3"
+            width="18"
+            height="18"
+            rx="4"
+            stroke="rgba(255,255,255,.25)"
+          />
+        </svg>
+
+        <div class="dropzone-title">
+          Click or drag your file here
+        </div>
+
+        <div class="dropzone-subtitle">
+          Supports MP3, WAV, MP4, M4A
+        </div>
+
+      </div>
+
+      <input
+        type="file"
+        id="audioFile"
+        accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.ogg,.webm"
+        style="
+          position:absolute;
+          inset:0;
+          width:100%;
+          height:100%;
+          opacity:0;
+          cursor:pointer;
+        "
+      />
+
+    </label>
+
+    <p id="selectedFile"></p>
+
+    <div style="
+      text-align:center;
+      margin-top:20px;
+      color:rgba(232,237,245,.45);
+      font-size:14px;
+      line-height:1.6;
+    ">
+      Click below to upload your file
+      and start transcribing.
+    </div>
+
+    <button id="uploadBtn" disabled>
+      Upload &amp; Transcribe
+    </button>
+
+    <p id="statusMsg" class="info"></p>
+
+    <div id="transcriptBox">
+      <h4>Transcript</h4>
+
+      <div id="transcriptText"></div>
+
+      <button id="downloadBtn">
+        Download PDF
+      </button>
+    </div>
+
+  </div>
+</section>
 
       <div class="dropzone-wrap">
         <label for="audioFile" class="dropzone" id="dropzone">
