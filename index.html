@@ -98,7 +98,7 @@
       <h3>upload your lecture</h3>
       <p>drop an mp3, wav, or other audio file</p>
 
-      <input type="file" id="audioFile" accept="audio/*" hidden />
+      <input type="file" id="audioFile" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.ogg,.webm" hidden />
       <div class="dropzone" id="dropzone">Click or drag your audio file here</div>
       <p id="selectedFile"></p>
       <button id="uploadBtn" disabled>Upload &amp; Transcribe</button>
@@ -250,7 +250,12 @@
     }
 
     // ── Dropzone ───────────────────────────────────────────────────
-    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileInput.value = "";   // reset so same file can be re-selected
+      fileInput.click();
+    });
     dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
     dropzone.addEventListener("drop", (e) => {
