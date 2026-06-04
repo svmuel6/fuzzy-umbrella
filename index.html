@@ -202,28 +202,57 @@
     }
 
     function waitForTranscript(filename) {
-      setStatus("Transcribing… this may take a minute.", "info");
+      // Save to localStorage so we can resume after a page refresh
+      localStorage.setItem("pendingTranscript", filename);
+      setStatus("Transcribing\u2026 for long lectures this can take 10–20 min.", "info");
+
       const docRef = doc(db, "transcriptions", filename);
-      let unsub;
-
-      const timeout = setTimeout(() => {
-        unsub && unsub();
-        setStatus("Transcription timed out. Check Firestore manually.", "error");
-      }, 10 * 60 * 1000);
-
-      unsub = onSnapshot(docRef, (snap) => {
+      const unsub  = onSnapshot(docRef, (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
 
-        // Handle different field names the extension may use
+        // Still processing
+        if (data.status === "PROCESSING") {
+          setStatus("Still transcribing\u2026 please wait.", "info");
+          return;
+        }
+
+        // Failed
+        if (data.status === "FAILED") {
+          unsub();
+          localStorage.removeItem("pendingTranscript");
+          setStatus("Transcription failed: " + (data.message || "unknown error"), "error");
+          return;
+        }
+
+        // Extract text from whichever field the extension used
         let text = "";
-        if (typeof data.transcript === "string") {
+        if (typeof data.transcript === "string" && data.transcript.trim()) {
           text = data.transcript;
         } else if (Array.isArray(data.chunks)) {
           text = data.chunks.map(c => c.transcript || "").join(" ");
         } else {
           text = JSON.stringify(data, null, 2);
         }
+
+        if (!text.trim()) return; // not ready yet
+
+        unsub();
+        localStorage.removeItem("pendingTranscript");
+        setStatus("Transcription complete!", "success");
+        showTranscript(text, filename);
+      }, (err) => {
+        setStatus("Error reading transcript: " + err.message, "error");
+      });
+    }
+
+    // On page load: resume if a transcript was pending before refresh
+    const pending = localStorage.getItem("pendingTranscript");
+    if (pending) {
+      setStatus("Resuming\u2026 waiting for transcript.", "info");
+      waitForTranscript(pending);
+    }
+
 
         clearTimeout(timeout);
         unsub();
