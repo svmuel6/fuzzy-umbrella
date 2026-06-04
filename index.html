@@ -34,13 +34,6 @@
     .upload-inner h3 { font-size: 16px; font-weight: 500; color: #e8edf5; margin-bottom: 0.3rem; }
     .upload-inner > p { font-size: 13px; color: rgba(232,237,245,0.4); margin-bottom: 1rem; }
 
-    .url-row { display: flex; gap: 8px; margin-top: 1rem; }
-    .url-row input { flex: 1; background: #0a0c10; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #e8edf5; font-size: 13px; padding: 9px 12px; outline: none; font-family: inherit; }
-    .url-row input::placeholder { color: rgba(232,237,245,0.2); }
-    .url-row input:focus { border-color: rgba(138,180,212,0.4); }
-    .url-row button { background: #8ab4d4; color: #0a0c10; font-size: 13px; font-weight: 500; padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; white-space: nowrap; font-family: inherit; }
-    .url-row button:hover { background: #9dc3df; }
-
     .divider { display: flex; align-items: center; gap: 8px; margin: 1rem 0; font-size: 12px; color: rgba(232,237,245,0.25); }
     .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid rgba(255,255,255,0.08); }
 
@@ -105,16 +98,10 @@
       <h3>upload your lecture</h3>
       <p>drop an mp3, wav, or other audio file</p>
 
-      <div class="divider">upload file</div>
-
       <input type="file" id="audioFile" accept="audio/*" hidden />
-
       <div class="dropzone" id="dropzone">Click or drag your audio file here</div>
-
       <p id="selectedFile"></p>
-
       <button id="uploadBtn" disabled>Upload &amp; Transcribe</button>
-
       <p id="statusMsg" class="info"></p>
 
       <div id="transcriptBox">
@@ -128,31 +115,19 @@
   <section class="steps">
     <div class="steps-label">how it works</div>
     <div class="steps-row">
-      <div class="step-card">
-        <div class="step-n">01</div>
-        <h4>upload the audio</h4>
-        <p>mp3, wav — whatever you've got</p>
-      </div>
-      <div class="step-card">
-        <div class="step-n">02</div>
-        <h4>ai transcribes it</h4>
-        <p>Google Speech-to-Text processes it automatically</p>
-      </div>
-      <div class="step-card">
-        <div class="step-n">03</div>
-        <h4>download transcript</h4>
-        <p>clean text, ready to study from</p>
-      </div>
+      <div class="step-card"><div class="step-n">01</div><h4>upload the audio</h4><p>mp3, wav — whatever you've got</p></div>
+      <div class="step-card"><div class="step-n">02</div><h4>ai transcribes it</h4><p>AssemblyAI processes a 1-hour file in ~5 min</p></div>
+      <div class="step-card"><div class="step-n">03</div><h4>download transcript</h4><p>clean text, ready to study from</p></div>
     </div>
   </section>
 
   <script type="module">
     import { initializeApp }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, onSnapshot }
-      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytesResumable }
+    import { getStorage, ref, uploadBytesResumable, getDownloadURL }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+    const ASSEMBLYAI_KEY = "3cae4ce5993c422fbced9580007b03de";
 
     const firebaseConfig = {
       apiKey:            "AIzaSyCeHn5ACani1scy-GsrAfGha-ohISaWV2w",
@@ -164,7 +139,6 @@
     };
 
     const app     = initializeApp(firebaseConfig);
-    const db      = getFirestore(app);
     const storage = getStorage(app);
 
     const dropzone      = document.getElementById("dropzone");
@@ -178,7 +152,7 @@
 
     function setStatus(text, type = "info") {
       statusMsg.textContent = text;
-      statusMsg.className   = type;
+      statusMsg.className = type;
     }
 
     function setFile(file) {
@@ -201,70 +175,81 @@
       };
     }
 
-    function waitForTranscript(filename) {
-      // Save to localStorage so we can resume after a page refresh
-      localStorage.setItem("pendingTranscript", filename);
-      setStatus("Transcribing\u2026 for long lectures this can take 10–20 min.", "info");
+    // ── AssemblyAI: submit + poll ──────────────────────────────────
+    async function transcribeWithAssemblyAI(audioUrl, filename) {
+      setStatus("Submitting to AssemblyAI…", "info");
 
-      const docRef = doc(db, "transcriptions", filename);
-      const unsub  = onSnapshot(docRef, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-
-        // Still processing
-        if (data.status === "PROCESSING") {
-          setStatus("Still transcribing\u2026 please wait.", "info");
-          return;
-        }
-
-        // Failed
-        if (data.status === "FAILED") {
-          unsub();
-          localStorage.removeItem("pendingTranscript");
-          setStatus("Transcription failed: " + (data.message || "unknown error"), "error");
-          return;
-        }
-
-        // Extract text from whichever field the extension used
-        let text = "";
-        if (typeof data.transcript === "string" && data.transcript.trim()) {
-          text = data.transcript;
-        } else if (Array.isArray(data.chunks)) {
-          text = data.chunks.map(c => c.transcript || "").join(" ");
-        } else {
-          text = JSON.stringify(data, null, 2);
-        }
-
-        if (!text.trim()) return; // not ready yet
-
-        unsub();
-        localStorage.removeItem("pendingTranscript");
-        setStatus("Transcription complete!", "success");
-        showTranscript(text, filename);
-      }, (err) => {
-        setStatus("Error reading transcript: " + err.message, "error");
+      // 1. Submit the job
+      const submitRes = await fetch("https://api.assemblyai.com/v2/transcript", {
+        method: "POST",
+        headers: {
+          "authorization": ASSEMBLYAI_KEY,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ audio_url: audioUrl, language_detection: true })
       });
+
+      if (!submitRes.ok) {
+        const err = await submitRes.json();
+        throw new Error(err.error || "Failed to submit transcription");
+      }
+
+      const { id } = await submitRes.json();
+      localStorage.setItem("assemblyai_job", JSON.stringify({ id, filename }));
+      setStatus("Transcribing… a 1-hour lecture takes ~5 min.", "info");
+
+      // 2. Poll every 5 seconds
+      pollTranscript(id, filename);
     }
 
-    // On page load: resume if a transcript was pending before refresh
-    const pending = localStorage.getItem("pendingTranscript");
-    if (pending) {
-      setStatus("Resuming\u2026 waiting for transcript.", "info");
-      waitForTranscript(pending);
+    function pollTranscript(id, filename) {
+      const interval = setInterval(async () => {
+        try {
+          const res  = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+            headers: { "authorization": ASSEMBLYAI_KEY }
+          });
+          const data = await res.json();
+
+          if (data.status === "completed") {
+            clearInterval(interval);
+            localStorage.removeItem("assemblyai_job");
+            setStatus("Transcription complete!", "success");
+            showTranscript(data.text, filename);
+            uploadBtn.disabled = false;
+
+          } else if (data.status === "error") {
+            clearInterval(interval);
+            localStorage.removeItem("assemblyai_job");
+            setStatus("Transcription error: " + data.error, "error");
+            uploadBtn.disabled = false;
+
+          } else {
+            // still queued or processing
+            const pct = data.audio_duration
+              ? Math.round((data.audio_start_from || 0) / data.audio_duration * 100)
+              : null;
+            setStatus(`Transcribing… status: ${data.status}${pct ? ` (${pct}%)` : ""}`, "info");
+          }
+        } catch (e) {
+          // network blip — keep polling
+          console.warn("Poll error:", e);
+        }
+      }, 5000);
     }
 
-
-        clearTimeout(timeout);
-        unsub();
-        setStatus("Transcription complete!", "success");
-        showTranscript(text, filename);
-      }, (err) => {
-        clearTimeout(timeout);
-        setStatus("Error reading transcript: " + err.message, "error");
-      });
+    // ── On load: resume a pending AssemblyAI job ───────────────────
+    const savedJob = localStorage.getItem("assemblyai_job");
+    if (savedJob) {
+      try {
+        const { id, filename } = JSON.parse(savedJob);
+        setStatus("Resuming transcription job…", "info");
+        pollTranscript(id, filename);
+      } catch (e) {
+        localStorage.removeItem("assemblyai_job");
+      }
     }
 
-    // Dropzone
+    // ── Dropzone ───────────────────────────────────────────────────
     dropzone.addEventListener("click", () => fileInput.click());
     dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
@@ -283,7 +268,7 @@
       if (fileInput.files.length > 0) setFile(fileInput.files[0]);
     });
 
-    // Upload
+    // ── Upload to Firebase Storage, then send URL to AssemblyAI ───
     uploadBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
       if (!file) { setStatus("Please select an audio file first.", "error"); return; }
@@ -308,9 +293,15 @@
           setStatus("Upload failed: " + err.message, "error");
           uploadBtn.disabled = false;
         },
-        () => {
-          setStatus("Upload complete! Transcribing…", "success");
-          waitForTranscript(filename);
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            await transcribeWithAssemblyAI(downloadUrl, filename);
+          } catch (err) {
+            console.error(err);
+            setStatus("Error: " + err.message, "error");
+            uploadBtn.disabled = false;
+          }
         }
       );
     });
