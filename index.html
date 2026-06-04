@@ -368,38 +368,115 @@
       if (fileInput.files.length > 0) setFile(fileInput.files[0]);
     });
 
+    // ── Extract audio from video file → WAV blob ───────────────────
+    async function extractAudio(file) {
+      setStatus("Extracting audio from video…", "info");
+      const arrayBuffer = await file.arrayBuffer();
+      const audioCtx    = new AudioContext();
+      const decoded     = await audioCtx.decodeAudioData(arrayBuffer);
+
+      // Render to offline context (mono, 16kHz — ideal for Speech-to-Text)
+      const sampleRate   = 16000;
+      const offlineCtx   = new OfflineAudioContext(1, decoded.duration * sampleRate, sampleRate);
+      const source       = offlineCtx.createBufferSource();
+      source.buffer      = decoded;
+      source.connect(offlineCtx.destination);
+      source.start(0);
+
+      const rendered = await offlineCtx.startRendering();
+      await audioCtx.close();
+
+      // Encode to WAV
+      return encodeWAV(rendered);
+    }
+
+    function encodeWAV(audioBuffer) {
+      const numChannels = 1;
+      const sampleRate  = audioBuffer.sampleRate;
+      const samples     = audioBuffer.getChannelData(0);
+      const pcm         = floatTo16BitPCM(samples);
+      const buffer      = new ArrayBuffer(44 + pcm.byteLength);
+      const view        = new DataView(buffer);
+
+      function writeString(offset, str) {
+        for (let i = 0; i < str.length; i++)
+          view.setUint8(offset + i, str.charCodeAt(i));
+      }
+
+      writeString(0, "RIFF");
+      view.setUint32(4,  36 + pcm.byteLength, true);
+      writeString(8, "WAVE");
+      writeString(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1,  true);           // PCM
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate,  true);
+      view.setUint32(28, sampleRate * 2, true); // byte rate
+      view.setUint16(32, 2,  true);            // block align
+      view.setUint16(34, 16, true);            // bits per sample
+      writeString(36, "data");
+      view.setUint32(40, pcm.byteLength, true);
+      new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+
+      return new Blob([buffer], { type: "audio/wav" });
+    }
+
+    function floatTo16BitPCM(input) {
+      const output = new Int16Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return output;
+    }
+
     // ── Upload ─────────────────────────────────────────────────────
     uploadBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
       if (!file) { setStatus("Please select a video first.", "error"); return; }
 
-      uploadBtn.disabled  = true;
+      uploadBtn.disabled = true;
       transcriptBox.style.display = "none";
-      setStatus("Uploading…", "info");
 
-      // Upload to `audio/` — the path the extension watches
-      const filename    = `${Date.now()}_${file.name}`;
-      const storageRef  = ref(storage, `audio/${filename}`);
-      const uploadTask  = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        "state_changed",
-        (snap) => {
-          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-          setStatus(`Uploading… ${pct}%`, "info");
-        },
-        (err) => {
-          console.error("Upload error:", err);
-          setStatus("Upload failed: " + err.message, "error");
-          uploadBtn.disabled = false;
-        },
-        async () => {
-          setStatus("Upload complete! Starting transcription…", "success");
-          // The extension is triggered by the file path `audio/{filename}`
-          // and writes the result to Firestore at transcriptions/{filename}
-          waitForTranscript(filename);
+      try {
+        // If it's a video, extract audio first; if already audio, use as-is
+        let audioBlob;
+        const isVideo = file.type.startsWith("video/");
+        if (isVideo) {
+          audioBlob = await extractAudio(file);
+        } else {
+          audioBlob = file;
         }
-      );
+
+        // Upload WAV to audio/ — the path the extension watches
+        const baseName   = file.name.replace(/\.[^.]+$/, "");
+        const filename   = `${Date.now()}_${baseName}.wav`;
+        const storageRef = ref(storage, `audio/${filename}`);
+        const uploadTask = uploadBytesResumable(storageRef, audioBlob);
+
+        setStatus("Uploading audio…", "info");
+
+        uploadTask.on(
+          "state_changed",
+          (snap) => {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            setStatus(`Uploading… ${pct}%`, "info");
+          },
+          (err) => {
+            console.error("Upload error:", err);
+            setStatus("Upload failed: " + err.message, "error");
+            uploadBtn.disabled = false;
+          },
+          async () => {
+            setStatus("Upload complete! Starting transcription…", "success");
+            waitForTranscript(filename);
+          }
+        );
+      } catch (err) {
+        console.error("Audio extraction error:", err);
+        setStatus("Failed to extract audio: " + err.message, "error");
+        uploadBtn.disabled = false;
+      }
     });
 
     // ── URL process (placeholder) ──────────────────────────────────
