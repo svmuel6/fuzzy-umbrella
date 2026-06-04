@@ -37,7 +37,7 @@
     .divider { display: flex; align-items: center; gap: 8px; margin: 1rem 0; font-size: 12px; color: rgba(232,237,245,0.25); }
     .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid rgba(255,255,255,0.08); }
 
-    .dropzone { border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 1.75rem; text-align: center; color: rgba(232,237,245,0.25); font-size: 13px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+    .dropzone { position: relative; border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 1.75rem; text-align: center; color: rgba(232,237,245,0.25); font-size: 13px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
     .dropzone:hover, .dropzone.drag-over { border-color: rgba(138,180,212,0.5); color: rgba(232,237,245,0.55); }
 
     #selectedFile { font-size: 12px; color: rgba(138,180,212,0.7); margin-top: 0.6rem; min-height: 18px; }
@@ -98,8 +98,10 @@
       <h3>upload your lecture</h3>
       <p>drop an mp3, wav, or other audio file</p>
 
-      <input type="file" id="audioFile" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.ogg,.webm" hidden />
-      <div class="dropzone" id="dropzone">Click or drag your audio file here</div>
+      <label for="audioFile" class="dropzone" id="dropzone">
+        Click or drag your audio file here
+        <input type="file" id="audioFile" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.ogg,.webm" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;" />
+      </label>
       <p id="selectedFile"></p>
       <button id="uploadBtn" disabled>Upload &amp; Transcribe</button>
       <p id="statusMsg" class="info"></p>
@@ -250,12 +252,7 @@
     }
 
     // ── Dropzone ───────────────────────────────────────────────────
-    dropzone.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      fileInput.value = "";   // reset so same file can be re-selected
-      fileInput.click();
-    });
+    // click handled natively by <label for="audioFile">
     dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
     dropzone.addEventListener("drop", (e) => {
