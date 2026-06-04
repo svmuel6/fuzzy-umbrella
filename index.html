@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Smart Lecture Platform</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { min-height: 100%; background: #0a0c10; color: #e8edf5; font-family: system-ui, -apple-system, sans-serif; }
@@ -37,12 +38,36 @@
     .divider { display: flex; align-items: center; gap: 8px; margin: 1rem 0; font-size: 12px; color: rgba(232,237,245,0.25); }
     .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid rgba(255,255,255,0.08); }
 
-    .dropzone { position: relative; border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 1.75rem; text-align: center; color: rgba(232,237,245,0.25); font-size: 13px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+    .dropzone {
+      position: relative;
+      border: 1px dashed rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 3.5rem 1.75rem;
+      text-align: center;
+      color: rgba(232,237,245,0.25);
+      font-size: 15px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
     .dropzone:hover, .dropzone.drag-over { border-color: rgba(138,180,212,0.5); color: rgba(232,237,245,0.55); }
 
     #selectedFile { font-size: 12px; color: rgba(138,180,212,0.7); margin-top: 0.6rem; min-height: 18px; }
 
-    #uploadBtn { display: block; width: 100%; margin-top: 1rem; background: #8ab4d4; color: #0a0c10; font-size: 13px; font-weight: 500; padding: 10px 18px; border-radius: 6px; border: none; cursor: pointer; font-family: inherit; transition: background 0.2s; }
+    #uploadBtn {
+      display: block;
+      width: 100%;
+      margin-top: 1rem;
+      background: #8ab4d4;
+      color: #0a0c10;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 14px 18px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
     #uploadBtn:hover { background: #9dc3df; }
     #uploadBtn:disabled { background: rgba(138,180,212,0.3); color: rgba(10,12,16,0.5); cursor: not-allowed; }
 
@@ -109,7 +134,7 @@
       <div id="transcriptBox">
         <h4>transcript</h4>
         <div id="transcriptText"></div>
-        <button id="downloadBtn">Download .txt</button>
+        <button id="downloadBtn">Download .pdf</button>
       </div>
     </div>
   </section>
@@ -119,7 +144,7 @@
     <div class="steps-row">
       <div class="step-card"><div class="step-n">01</div><h4>upload the audio</h4><p>mp3, wav — whatever you've got</p></div>
       <div class="step-card"><div class="step-n">02</div><h4>ai transcribes it</h4><p>AssemblyAI processes a 1-hour file in ~5 min</p></div>
-      <div class="step-card"><div class="step-n">03</div><h4>download transcript</h4><p>clean text, ready to study from</p></div>
+      <div class="step-card"><div class="step-n">03</div><h4>download transcript</h4><p>clean pdf, ready to study from</p></div>
     </div>
   </section>
 
@@ -167,13 +192,28 @@
       transcriptText.textContent = text;
       transcriptBox.style.display = "block";
       downloadBtn.onclick = () => {
-        const blob = new Blob([text], { type: "text/plain" });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href     = url;
-        a.download = filename.replace(/\.[^.]+$/, "") + "_transcript.txt";
-        a.click();
-        URL.revokeObjectURL(url);
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "pt", format: "letter" });
+        const margin = 50;
+        const lineHeight = 14;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const maxWidth = doc.internal.pageSize.getWidth() - margin * 2;
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(11);
+
+        const lines = doc.splitTextToSize(text, maxWidth);
+        let y = margin;
+        lines.forEach(line => {
+          if (y + lineHeight > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(line, margin, y);
+          y += lineHeight;
+        });
+
+        doc.save(filename.replace(/\.[^.]+$/, "") + "_transcript.pdf");
       };
     }
 
@@ -181,7 +221,6 @@
     async function transcribeWithAssemblyAI(audioUrl, filename) {
       setStatus("Submitting to AssemblyAI…", "info");
 
-      // 1. Submit the job
       const submitRes = await fetch("https://api.assemblyai.com/v2/transcript", {
         method: "POST",
         headers: {
@@ -200,7 +239,6 @@
       localStorage.setItem("assemblyai_job", JSON.stringify({ id, filename }));
       setStatus("Transcribing… a 1-hour lecture takes ~5 min.", "info");
 
-      // 2. Poll every 5 seconds
       pollTranscript(id, filename);
     }
 
@@ -226,14 +264,12 @@
             uploadBtn.disabled = false;
 
           } else {
-            // still queued or processing
             const pct = data.audio_duration
               ? Math.round((data.audio_start_from || 0) / data.audio_duration * 100)
               : null;
             setStatus(`Transcribing… status: ${data.status}${pct ? ` (${pct}%)` : ""}`, "info");
           }
         } catch (e) {
-          // network blip — keep polling
           console.warn("Poll error:", e);
         }
       }, 5000);
@@ -252,7 +288,6 @@
     }
 
     // ── Dropzone ───────────────────────────────────────────────────
-    // click handled natively by <label for="audioFile">
     dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
     dropzone.addEventListener("drop", (e) => {
