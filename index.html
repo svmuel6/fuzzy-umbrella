@@ -417,6 +417,7 @@
       });
 
       uploadBtn.addEventListener("click", async () => {
+        if (!auth.currentUser) { window.location.href = "login.html"; return; }
         const file = fileInput.files[0];
         if (!file) { setStatus(prefix, "Please select a file first.", "error"); return; }
         uploadBtn.disabled = true;
