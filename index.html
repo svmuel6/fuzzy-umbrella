@@ -409,10 +409,15 @@
       dropzone.addEventListener("drop", (e) => {
         e.preventDefault();
         dropzone.classList.remove("drag-over");
+        if (!auth.currentUser) { window.location.href = "login.html"; return; }
         const file = e.dataTransfer.files[0];
         if (file) { const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files; onFileSelected(prefix, file); }
       });
+      dropzone.addEventListener("click", (e) => {
+        if (!auth.currentUser) { e.preventDefault(); window.location.href = "register.html"; }
+      });
       fileInput.addEventListener("change", () => {
+        if (!auth.currentUser) { window.location.href = "register.html"; return; }
         if (fileInput.files[0]) onFileSelected(prefix, fileInput.files[0]);
       });
 
