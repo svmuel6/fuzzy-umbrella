@@ -400,10 +400,9 @@
 
     // ── Wire up a dropzone ─────────────────────────────────────────
     function initDropzone(prefix) {
-      const dropzone  = document.getElementById(`${prefix}-dropzone`);
-      const fileInput = document.getElementById(`${prefix}-file`);
-      const selectedEl = document.getElementById(`${prefix}-selected`);
-      const uploadBtn = document.getElementById(`${prefix}-upload-btn`);
+      const dropzone   = document.getElementById(`${prefix}-dropzone`);
+      const fileInput  = document.getElementById(`${prefix}-file`);
+      const uploadBtn  = document.getElementById(`${prefix}-upload-btn`);
 
       dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
       dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
